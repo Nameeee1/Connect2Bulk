@@ -58,7 +58,7 @@ const Personal: React.FC = () => {
         const email = attrs.email || '';
         const phone = attrs.phone_number || '';
         // Derive country code and iso2 from phone if possible
-        let countryCode = ' +1'.trim();
+        let countryCode = '+1';
         let countryIso2 = 'US';
         if (phone.startsWith('+')) {
           const match = COUNTRY_OPTIONS.find((o) => phone.startsWith(o.dial));
@@ -72,19 +72,29 @@ const Personal: React.FC = () => {
               ? `${countryCode} ${phone.slice(countryCode.length).trim()}`
               : phone)
           : '';
-        setForm((prev) => {
-          const next = {
-            ...prev,
-            firstName: first,
-            lastName: last,
-            email,
-            phone: displayPhone,
-            countryCode,
-            countryIso2,
-          };
-          snapshotRef.current = next;
-          return next;
-        });
+        
+        const nextForm = {
+          firstName: first,
+          lastName: last,
+          email,
+          phone: displayPhone,
+          dateOfBirth: '',
+          gender: '',
+          city: '',
+          country: '',
+          timezone: '',
+          language: 'en',
+          bio: '',
+          newsletter: false,
+          twoFactor: false,
+          avatarUrl: '',
+          countryIso2,
+          countryCode,
+        };
+        
+        // Update both form state and snapshot ref
+        setForm(nextForm);
+        snapshotRef.current = { ...nextForm }; // Create a new object to avoid reference issues
       } catch (e) {
         // ignore; user may be unauthenticated briefly
         // console.error('Failed to load user attributes', e);
@@ -120,7 +130,6 @@ const Personal: React.FC = () => {
     }
   };
 
-  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const onPhoneChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -131,13 +140,22 @@ const Personal: React.FC = () => {
       set('phone')(e as any);
       return;
     }
-    const stripped = raw
-      .replace(/^\+\d{1,4}\s*/, '') // remove any leading +NNN
-      .replace(new RegExp('^' + escapeRegExp(dial) + '\\s*'), ''); // remove selected dial if present
-    const next = `${dial} ${stripped}`.replace(/\s+/g, ' ').trimEnd();
-    setForm((prev) => ({ ...prev, phone: next }));
+    
+    // Remove all non-digit characters
+    const digitsOnly = raw.replace(/\D/g, '');
+    
+    // Format the phone number with the country code and spaces
+    let formatted = dial;
+    if (digitsOnly.length > dial.replace(/\D/g, '').length) {
+      const numberPart = digitsOnly.slice(dial.replace(/\D/g, '').length);
+      // Add spaces for better readability: +1 123 456 7890
+      formatted = `${dial} ${numberPart.replace(/(\d{3})(?=\d)/g, '$1 ')}`.trim();
+    }
+    
+    setForm((prev) => ({ ...prev, phone: formatted }));
+    
     if (touched.phone) {
-      const msg = validateField('phone', next);
+      const msg = validateField('phone', formatted);
       setErrors((prev) => ({ ...prev, phone: msg }));
     }
   };
