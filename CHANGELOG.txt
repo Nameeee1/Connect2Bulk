@@ -1,0 +1,255 @@
+Connect2Bulk - Changelog
+All notable changes to this project will be documented in this file.
+
+Date: 2025-09-09 (UTC+08)
+
+Fixed
+- None.
+
+Changed
+- `src/pages/EmailVerification.tsx`: After successful verification and password set, the flow now also upserts the admin into Amplify Data `User` with role `SUPER_MANAGER`, handling userPool/identityPool auth modes and enum serialization fallbacks consistently with ManageUsers.
+- `amplify/data/resource.ts`: Updated `User` model to include `firm_id` to associate users with their firm.
+
+Refactored
+- None.
+
+Added
+- Automatic creation/upsert of a `User` record for the newly verified admin as `SUPER_MANAGER` immediately after Firm creation. Ensures admin first/last name are captured and persisted.
+- During verification, the `Firm` id is captured and written to the admin `User.firm_id` so roles are scoped to a firm.
+
+Date: 2025-09-08 (UTC+08)
+
+Fixed
+- None.
+
+Changed
+- `src/pages/firm/AdminConsole.tsx`: Added a new "Manage Teams" tab entry and import.
+- `src/pages/firm/tabs/ManageTeams.tsx`: Manager selection is now required when adding a team. Fetches users from Amplify Data `User` model for the dropdown and displays the manager in the table. Aligned Select/Label/Input styles with ManageUsers.
+- Backend `Role` enum updated in `amplify/data/resource.ts` to: `['Super Manager', 'Manager', 'Member']`.
+- `src/pages/firm/tabs/ManageTeams.tsx`: Now persists teams using Amplify Data (`models.Team.list/create`) with userPool/identityPool fallback and loading state.
+- `src/pages/firm/tabs/ManageUsers.tsx`: Added inline "Edit Role" per user with Save/Cancel and Amplify Data update.
+- `src/pages/firm/tabs/ManageUsers.tsx`: Added bulk role updates with selection checkboxes, page-select-all, and Apply action.
+- `src/pages/firm/tabs/ManageUsers.tsx`: After inviting a user, now triggers an Amplify Function to email a password reset link and shows a copyable /reset link in the UI.
+- `src/pages/firm/tabs/ManageUsers.tsx`: Added per-user Delete that removes the Cognito user and the User record, with confirmation and progress state.
+
+Refactored
+- None.
+
+Added
+- `src/pages/firm/tabs/ManageTeams.tsx`: New tab component with responsive list, pagination, and "Add Team" modal. Styled-components are placed below the component at module scope.
+- Backend `Team` model in `amplify/data/resource.ts` (fields: `name`, `description`, `manager_id`, `manager_name`, `manager_email`, `members`, `created_at`) with authenticated and guest access.
+- `src/pages/firm/tabs/ManageUsers.tsx`: "Normalize Roles" button to migrate legacy role values to new enum codes.
+- New Amplify Function `sendResetEmail` using SES to email the /reset link to newly invited users.
+- New Amplify Function `deleteCognitoUser` to remove users from Cognito User Pool.
+- New Data custom mutations: `sendResetEmail`, `deleteCognitoUser` wired to the above functions in `amplify/data/resource.ts`.
+
+Date: 2025-09-06 (UTC+08)
+
+Fixed
+- None.
+
+Changed
+- `src/pages/firm/TruckBoard.tsx`: Implemented responsive "Posted Trucks" UI with a toolbar and modal to post trucks; aligned alert action button styles (primary bright blue #0d6efd) with LoadBoard.
+
+Refactored
+- None.
+
+Added
+- Backend `Truck` model in `amplify/data/resource.ts` (truck_number, available_date, origin, destination_preference, trailer_type, equipment, length_ft, weight_capacity, comment, created_at) with guest IAM access.
+- `src/pages/firm/tabs/AllFirmTrucks.tsx`: New listing component with search bar, refresh, pagination UI, and a responsive table.
+- `src/pages/firm/TruckBoard.tsx`: "Post Truck" modal wired to Amplify Data `generateClient<Schema>().models.Truck.create`, with validation and trailer type datalist. Optimistic update and refresh on create.
+
+Date: 2025-09-05 (UTC+08)
+
+Changed
+- Implemented a responsive user management UI in `src/pages/firm/tabs/ManageUsers.tsx` with a table, pagination, and an "Add New User" modal. Styled-components are placed under the component at module scope per project rule.
+
+Added
+- Backend `User` model and `Role` enum in `amplify/data/resource.ts` to store first name, last name, email, phone, and role.
+- Admin flow to add users: creates a Cognito user via Amplify Auth `signUp` with a temporary password and persists metadata to the Amplify Data `User` model.
+
+Date: 2025-09-04 (UTC+08)
+
+Fixed
+- Load data persistence issue in LoadBoard: loads added via "Add New Load" were lost when navigating away and returning to the loadboard. Implemented LoadContext to persist load data across navigation.
+
+Added
+- Created LoadContext provider to maintain load data state across component unmounting/remounting during navigation.
+
+Date: 2025-08-19 (UTC+08)
+
+Fixed
+- Login page form inputs only accepted one character at a time due to styled-components being defined inside the component and recreated on each render, causing input remount and focus loss. Moved all styled-components to module scope (kept under the component in the file) in `src/pages/Login.tsx`.
+- Runtime error `FormColumns is not defined` in `src/pages/Register.tsx` by defining `FormColumns` as a module-scoped styled-component (grid wrapper) placed under the component.
+
+Changed
+- Login field "username" renamed to "email" in `src/pages/Login.tsx`.
+  - State renamed to `email` with `setEmail`.
+  - Label/id updated to "Email" / `email`.
+  - Input type changed to `type="email"`.
+  - Submit log updated to include `{ email, password }`.
+  - Note: If any backend expects `username`, map `email` accordingly when integrating.
+
+Refactored
+- Register page styled-components moved out of the component to module scope in `src/pages/Register.tsx` (placed under the component in the file), replacing the prior `useRef(styled.*).current` pattern. This avoids remounts on re-render and improves focus stability and performance. Affected components include: `PageContainer`, `Card`, `LogoContainer`, `Logo`, `Title`, `Version`, `FormGroup`, `Label`, `Input`, `Select`, `Row`, `Col`, `BrandHeader`, `BackButton`, `FormCol`, `Button`, `Primary`.
+
+Added
+- This `CHANGELOG.txt` file.
+- `src/pages/firm/FirmDashboard.tsx` page using AWS Amplify Data `generateClient<Schema>()` to list and create `Firm` records defined in `amplify/data/resource.ts`.
+- Responsive, mobile-first layout and form/table UI via styled-components (module-scoped, placed under component) with CSS `clamp()` and grid for breakpoints.
+- Added route `"/firm"` in `src/App.tsx` to access the new Firm dashboard page.
+
+Conventions:
+- Styled-components are defined at module scope and placed under their corresponding function components within the file, per project preference.
+
+
+Date: 2025-08-20 (UTC+08)
+
+Fixed
+- Verification code digits were not visible due to input text color in `src/pages/EmailVerification.tsx`; set explicit text and caret colors.
+
+Changed
+- Registration now uses Amplify Auth sign-up with a temporary password in `src/pages/Register.tsx`; direct Firm creation moved to post-verification step. Temporary password and pending firm payload saved in sessionStorage.
+- Removed `/firm` route and its component. Deleted `src/pages/firm/FirmDashboard.tsx` and removed the route/import from `src/App.tsx`.
+- `src/pages/Login.tsx` now performs a data check by querying Amplify Data for `Firm` via `administrator_email` (interim until Auth sign-in is wired).
+- Refreshed `EmailVerification` UI: fixed-size centered code boxes, improved spacing/typography, gradient background, refined card styling, and header brand mark.
+- Code boxes vertically centered and clearer focus states to enhance readability and feedback.
+
+Refactored
+- Initialize Amplify Data client inside components via `useMemo` to avoid initialization order issues in `Register` and `Login`.
+
+Added
+- `src/pages/EmailVerification.tsx`: email confirmation with 6-digit code, prompt for new password (handles `CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED`), then creates the `Firm` record via Amplify Data. Responsive UI using styled-components.
+- Route `/verify` added in `src/App.tsx` for the new verification flow.
+- Resend verification code with 30s cooldown via Amplify `resendSignUpCode` in `src/pages/EmailVerification.tsx`.
+- Error "shake" animation on the code grid when a verification error occurs.
+
+Date: 2025-08-21 (UTC+08)
+
+Fixed
+- SecretNotSetError for missing `GOOGLE_CLIENT_ID` by removing Google OAuth provider and relying on email/password authentication only.
+
+Changed
+- Backend auth (`amplify/auth/resource.ts`): removed Google `externalProviders`; email/password-only sign-in. Eliminates need for `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`. Requires sandbox update (`npx ampx sandbox`).
+- Login (`src/pages/Login.tsx`): switched to Amplify Auth `signIn` with email/password and implemented handling for next steps (`CONFIRM_SIGN_UP`, `CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED`, `RESET_PASSWORD`).
+- Login UI: removed social sign-in separator; kept Register and Forgot Password actions.
+
+Refactored
+- Login: removed Amplify Data client usage and related imports; simplified logic and cleaned unused code.
+- Styling: reaffirmed styled-components at module scope, placed under their components per project rule.
+- Verified no client-side password complexity/length checks in `src/pages/EmailVerification.tsx` and `src/pages/ResetPassword.tsx`; rely on Cognito password policy.
+
+Added
+- `src/pages/ResetPassword.tsx`: request and confirm flow using Amplify Auth (`resetPassword`, `confirmResetPassword`), responsive UI with styled-components.
+- Route `/reset` in `src/App.tsx` and "Forgot Password" navigation from `src/pages/Login.tsx`.
+
+Date: 2025-08-23 (UTC+08)
+
+Fixed
+- `src/navigation/Sidebar.tsx`: Collapse tab was clipped/hidden behind outlet content; now overlays correctly using a portal to `document.body` with a high z-index.
+- `src/navigation/Sidebar.tsx`: Horizontal scrollbar on the sidebar caused by the protruding tab; set `overflow-x: hidden` on `Aside` and made the tab `position: fixed` so it doesn't expand the sidebar box.
+- `src/navigation/AppLayout.tsx`: Removed white gutter/overflow by changing `Main` to `width: 100%` and `overflow-x: hidden`.
+
+Changed
+- `src/App.tsx`: nested protected firm routes under `AppLayout` (`/firm`, `/firm/load-board`, `/firm/truck-board`, `/firm/admin`, `/firm/search`, `/firm/profile`); auth routes remain outside the layout.
+- `src/pages/firm/Dashboard.tsx`: updated UI with brand header and "Sign out" action; kept styled-components at module scope below component.
+- `src/navigation/Sidebar.tsx`: updated `NavLink` hover/active theme to crimson (`#dc143c`) with subtle hover tint and active gradient + left inset highlight.
+- `src/navigation/Sidebar.tsx`: Collapse tab moved to top-right, protrudes 14px over outlet; visible on tablet/desktop only. Fine-tuned size (32x48), radius (12px), hover micro-shift, and raised stacking.
+- `src/navigation/Sidebar.tsx`: Tab visual style updated to brand crimson (`background: #a00e2b;` hover `#c51236`), removed border.
+- `src/navigation/Sidebar.tsx`: Brand tweaks — `BrandLogo` to 32px and `Brand` left padding +3px.
+- `src/navigation/Sidebar.tsx`: Collapsed width adjusted to `73px`.
+- `src/navigation/Sidebar.tsx`: Smoother width transition and `transform: none` on desktop to avoid creating a containing block that could clip overlays.
+- `src/navigation/AppLayout.tsx`: `Main` sits below the tab (local stacking context) and pads left equal to sidebar width; keeps the tab overlapping the outlet as intended.
+
+Refactored
+- Introduced `src/navigation/AppLayout.tsx` to centralize layout: renders `Sidebar` and an `Outlet`; `Main` applies desktop left padding equal to sidebar width to avoid content overlap.
+- `src/navigation/Sidebar.tsx`: Render collapse tab via React portal to `document.body` and compute position with fixed `left` + `transform: translateX(-14px)`; eliminates ancestor clipping and layout coupling.
+
+Added
+- Responsive `Sidebar` (`src/navigation/Sidebar.tsx`) with styled-components (module-scoped, placed under component). Mobile drawer + overlay; fixed on tablet/desktop; uses `NavLink` active styles.
+- Sidebar icons via Iconify (`@iconify-icon/react`).
+- Routes in `src/App.tsx` for firm area: `/firm`, `/firm/load-board`, `/firm/truck-board`, `/firm/admin`, `/firm/search`, `/firm/profile`.
+- `src/pages/firm/UnderConstruction.tsx`: shared placeholder component (responsive, styled-components at module scope, placed under component).
+- Placeholder firm pages wired to render placeholders: `src/pages/firm/LoadBoard.tsx`, `TruckBoard.tsx`, `AdminConsole.tsx`, `Search.tsx`, `Profile.tsx` (all render `UnderConstruction`).
+
+Date: 2025-08-25 (UTC+08)
+
+Fixed
+- No functional fixes today.
+
+Changed
+- `src/pages/firm/Dashboard.tsx`, `src/pages/firm/LoadBoard.tsx`, `src/pages/firm/TruckBoard.tsx`, and `src/pages/firm/AdminConsole.tsx` now use a shared folder-style tabs component for consistent visuals and behavior.
+- Updated Admin Console nav icon to `mdi:office-building-cog` in `src/navigation/Sidebar.tsx` for clearer admin/building affordance.
+
+Refactored
+- Extracted tab UI into reusable `src/components/FolderTabs.tsx` with ARIA roles (`tablist`, `tab`, `tabpanel`) and roving tabindex keyboard navigation (Arrow keys, Home/End).
+- Removed duplicated tab logic and styled-components from `Dashboard.tsx`, `LoadBoard.tsx`, `TruckBoard.tsx`, and `AdminConsole.tsx`.
+- Replaced `UnderConstruction` on `TruckBoard.tsx` and `AdminConsole.tsx` with the tabs layout.
+- Minor CSS cleanup in `src/components/FolderTabs.tsx` (header/brand spacing and hover block formatting); no functional change.
+
+Added
+- `src/components/FolderTabs.tsx` reusable component supporting `tabs`, `ariaLabel`, `idPrefix`, `brand`, `initialActiveId`, and `onChange` props.
+
+Date: 2025-08-26 (UTC+08)
+
+Fixed
+- No functional fixes today.
+
+Changed
+- `src/pages/firm/LoadBoard.tsx`: Removed "Search Loads" and "My Loads" buttons from actions; kept only "Add New Load".
+- `src/components/Alert.tsx`: Unified alert background across variants to `#1f2937`; moved icon above content, increased icon size to 40px, added drop shadow and subtle pulse animation (respects `prefers-reduced-motion`); simplified layout to content + close.
+- `src/pages/firm/LoadBoard.tsx`: Replaced native `window.confirm` with a styled warning alert using the global alert system; updated alert action buttons to a white theme — primary filled white with dark text, secondary outlined with white border and white text; added accessible `:focus-visible` outlines.
+- `src/pages/firm/LoadBoard.tsx`: Trailer Type field now supports type-ahead via input + datalist suggestions (options: van, reefer, flatbed, intermodal, tanker, heavy haul, dumps, grain, car hauler, pneumatic, forestry, livestock, lowboy, dropdeck, double drop, cargo vans).
+- `src/pages/firm/LoadBoard.tsx`: Trailer Type input and suggestions are forced to ALL CAPS while typing.
+- `src/pages/firm/LoadBoard.tsx`: Trailer Type is required and must match the allowed list; shows validation error if not.
+- `src/pages/firm/LoadBoard.tsx`: Input fields now inherit the global font-family for consistent typography.
+- `src/pages/firm/LoadBoard.tsx`: "All Firm Loads" tab now renders an extracted component and consumes shared trailer constants from `src/pages/firm/constants.ts`.
+- `src/pages/firm/LoadBoard.tsx`: Reintroduced brand area in the tabs header with page name and logo for consistency with `Dashboard`.
+- `src/pages/firm/tabs/AllFirmLoads.tsx`: Moved the "Add New Load" button into the tab toolbar; triggers parent modal via `onAddNewLoad` prop.
+
+Refactored
+- Removed unused `FormSelect` styled-component after switching Trailer Type to input + datalist; kept inputs styled via shared `sharedInput`.
+- Extracted the All Firm Loads UI into `src/pages/firm/tabs/AllFirmLoads.tsx` and removed duplicated search/table logic and styled-components from `LoadBoard.tsx`.
+- `src/pages/firm/LoadBoard.tsx`: Removed redundant `PageHeader`, `HeaderTitle`, `ActionsBar`, and `ActionButton` styled-components.
+
+Added
+- `amplify/data/resource.ts`: Added `Load` model (load_number, pickup_date, origin, destination, trailer_type, equipment_requirement, miles, rate, comment, created_at) with guest IAM access.
+- `src/pages/firm/LoadBoard.tsx`: Wired "Add New Load" to open a responsive modal form and create a Load via Amplify Data `generateClient<Schema>().models.Load.create`.
+- Modal UI components using styled-components placed below the component per project convention.
+- `src/pages/firm/tabs/AllFirmLoads.tsx`: New component for the "All Firm Loads" tab with its own search bar, table, pagination, and styled-components (defined at module scope below the component).
+
+Date: 2025-08-27 (UTC+08)
+
+Fixed
+- No functional fixes today.
+
+Changed
+- `src/pages/firm/Profile.tsx`: Tabs reduced to exactly three — Personal, Work, Settings. Removed Business Profile, Users, and Security tabs. Styled-components kept below the component at module scope.
+- `src/pages/firm/AdminConsole.tsx`: "Business Profile" tab now renders the full `BusinessProfile` form component.
+- `src/navigation/Sidebar.tsx`: Removed "Business Profile" nav item; access Business Profile from Admin Console tab.
+- `src/pages/firm/tabs/Personal.tsx`: Save now updates Cognito user attributes and also persists administrator fields to Amplify Data `Firm` model (matched by `administrator_email`).
+- `src/pages/firm/tabs/Personal.tsx`: Added saving state to disable the Save button and show "Saving..." feedback.
+
+Refactored
+- Replaced temporary BusinessProfile placeholder with a responsive form UI using styled-components placed below the component in `src/pages/firm/tabs/BusinessProfile.tsx`.
+
+Added
+- `src/pages/firm/tabs/BusinessProfile.tsx`: Implemented company profile form (Company, Contact, Address, Compliance/Insurance, Branding & Preferences). Includes datalist for Trailer Type using shared constants from `src/pages/firm/constants.ts`.
+- `src/pages/firm/BusinessProfile.tsx`: New page wrapper with brand header embedding the BusinessProfile component.
+- `src/App.tsx`: Added route `/firm/business-profile` and page import.
+- `src/navigation/Sidebar.tsx`: Added "Business Profile" nav item with `mdi:office-building-outline` icon.
+
+Date: 2025-08-28 (UTC+08)
+
+Fixed
+- Prevented potential Firm creation failures due to missing required/expected fields by providing schema-aligned safe defaults across all creation paths.
+
+Changed
+- Standardized `Firm.create` payloads to include extended fields in `src/pages/EmailVerification.tsx` (both create paths), `src/pages/firm/Work.tsx`, and `src/pages/firm/tabs/Personal.tsx` (fallback create). Fields covered: `city`, `country`, `dba`, `dot`, `mc`, `ein`, `phone`, `website`, `insurance_provider`, `policy_number`, `policy_expiry`, `w9_on_file`, `brand_color`, `notes`, plus counters `load_posts`, `truck_posts`.
+- `src/pages/firm/LoadBoard.tsx`: Updated alert action button styles — primary uses bright blue (#0d6efd) with hover/active states and box-shadow for contrast on dark alert background (#1f2937); secondary is transparent with a semi-opaque white border; added focus-visible outlines for accessibility. Styled-components remain below the component.
+
+Refactored
+- No changes today.
+
+Added
+- No additions today.

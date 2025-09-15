@@ -1,0 +1,1 @@
+export declare const storage: import("@aws-amplify/plugin-types").ConstructFactory<import("@aws-amplify/plugin-types").ResourceProvider<import("@aws-amplify/backend-storage").StorageResources> & import("@aws-amplify/plugin-types").StackProvider>;
