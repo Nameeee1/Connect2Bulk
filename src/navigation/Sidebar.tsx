@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useNavigate } from 'react-router-dom'
 import styled from 'styled-components'
 import { Icon } from '@iconify-icon/react'
-import { signOut, fetchUserAttributes } from 'aws-amplify/auth'
+import { signOut } from 'aws-amplify/auth'
 import ConfirmSignOutDialog from '../components/ConfirmSignOutDialog'
-import { generateClient } from 'aws-amplify/data'
-import type { Schema } from '../../amplify/data/resource'
+import { useUserData } from '../hooks/useUserData'
 
 type SidebarProps = { collapsed: boolean; onToggleCollapse: () => void }
 
@@ -14,107 +13,27 @@ function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const client = useMemo(() => generateClient<Schema>(), [])
 
-  const [userName, setUserName] = useState<string>('')
-  const [userEmail, setUserEmail] = useState<string>('')
-  const [userRole, setUserRole] = useState<string>('')
-  const [company, setCompany] = useState<string>('')
-
-  // Map stored role codes or legacy strings to display labels
-  const displayRole = (r: any): string => {
-    const v = String(r ?? '').toUpperCase()
-    if (v === 'SUPER_MANAGER') return 'Super Manager'
-    if (v === 'MANAGER') return 'Manager'
-    if (v === 'MEMBER') return 'Member'
-    if (r === 'Admin') return 'Super Manager'
-    if (r === 'Regular') return 'Member'
-    if (r === 'Super Manager' || r === 'Manager' || r === 'Member') return String(r)
-    return ''
+  const { data: userData, isLoading } = useUserData()
+  
+  // Destructure with default values to prevent undefined errors
+  const {
+    userName = '',
+    userEmail = '',
+    userRole = '',
+    company = ''
+  } = userData || {}
+  
+  // Show loading state if needed
+  if (isLoading) {
+    return (
+      <Aside id="app-sidebar" role="navigation" aria-label="Main" $open={true} $collapsed={false}>
+        <div style={{ padding: '1rem', color: '#e2e8f0' }}>Loading user data...</div>
+      </Aside>
+    )
   }
 
-  // Attempt to fetch a model with graceful auth fallback
-  const tryList = async <T,>(fn: () => Promise<{ data?: T; errors?: any }>): Promise<T | undefined> => {
-    try {
-      const res = await fn()
-      if ((res as any)?.errors?.length) return undefined
-      return res.data
-    } catch (e: any) {
-      const msg = String(e?.message ?? e)
-      if (/Not Authorized|Unauthorized|Missing credentials/i.test(msg)) return undefined
-      return undefined
-    }
-  }
 
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      try {
-        const attrs = await fetchUserAttributes()
-        if (!alive) return
-        const first = (attrs.given_name || '').trim()
-        const last = (attrs.family_name || '').trim()
-        const emailRaw = (attrs.email || '').trim()
-        const email = emailRaw.toLowerCase()
-        setUserName([first, last].filter(Boolean).join(' '))
-        setUserEmail(emailRaw)
-
-        // 1) Fetch role from User model by email
-        let roleVal: string = ''
-        const usersUL: any = await tryList(() => (client.models.User.list as any)({
-          filter: { email: { eq: email } },
-          limit: 1,
-          authMode: 'userPool',
-        }))
-        let userRow: any = (Array.isArray(usersUL) ? usersUL[0] : usersUL?.[0])
-        if (!userRow) {
-          const usersIL: any = await tryList(() => (client.models.User.list as any)({
-            filter: { email: { eq: email } },
-            limit: 1,
-            authMode: 'identityPool',
-          }))
-          userRow = (Array.isArray(usersIL) ? usersIL[0] : usersIL?.[0])
-        }
-        if (userRow && userRow.role) roleVal = displayRole(userRow.role)
-        setUserRole(roleVal)
-
-        // 2) Fetch company from Firm model
-        const firmIdKey = 'c2b:myFirmId'
-        let firmData: any | null = null
-        let persistedId: string | null = null
-        try { persistedId = localStorage.getItem(firmIdKey) } catch {}
-        if (persistedId) {
-          const byIdUL: any = await tryList(() => (client.models.Firm.list as any)({
-            filter: { id: { eq: persistedId } }, limit: 1, authMode: 'userPool'
-          }))
-          firmData = (Array.isArray(byIdUL) ? byIdUL[0] : byIdUL?.[0])
-          if (!firmData) {
-            const byIdIL: any = await tryList(() => (client.models.Firm.list as any)({
-              filter: { id: { eq: persistedId } }, limit: 1, authMode: 'identityPool'
-            }))
-            firmData = (Array.isArray(byIdIL) ? byIdIL[0] : byIdIL?.[0])
-          }
-        }
-        if (!firmData && email) {
-          const byEmailUL: any = await tryList(() => (client.models.Firm.list as any)({
-            filter: { administrator_email: { eq: email } }, limit: 1, authMode: 'userPool'
-          }))
-          firmData = (Array.isArray(byEmailUL) ? byEmailUL[0] : byEmailUL?.[0])
-          if (!firmData) {
-            const byEmailIL: any = await tryList(() => (client.models.Firm.list as any)({
-              filter: { administrator_email: { eq: emailRaw } }, limit: 1, authMode: 'identityPool'
-            }))
-            firmData = (Array.isArray(byEmailIL) ? byEmailIL[0] : byEmailIL?.[0])
-          }
-        }
-        const name = String((firmData as any)?.firm_name || '').trim()
-        setCompany(name)
-      } catch (e) {
-        // non-fatal
-      }
-    })()
-    return () => { alive = false }
-  }, [client])
 
   const handleSignOut = async () => {
     // Close dialog and sidebar on confirm, then sign out
