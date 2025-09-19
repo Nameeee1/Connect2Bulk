@@ -1,0 +1,20 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-connect2bulk-dev-fdb74-authRole",
+      "UnauthRoleArn": "arn:aws:iam::115313776737:role/amplify-connect2bulk-dev-fdb74-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::115313776737:role/amplify-connect2bulk-dev-fdb74-authRole",
+      "Region": "ap-southeast-2",
+      "DeploymentBucketName": "amplify-connect2bulk-dev-fdb74-deployment",
+      "UnauthRoleName": "amplify-connect2bulk-dev-fdb74-unauthRole",
+      "StackName": "amplify-connect2bulk-dev-fdb74",
+      "StackId": "arn:aws:cloudformation:ap-southeast-2:115313776737:stack/amplify-connect2bulk-dev-fdb74/07e51c10-94f1-11f0-a312-02506c98c8e9",
+      "AmplifyAppId": "dqacll8avj7ad"
+    },
+    "categories": {
+      "auth": {
+        "connect2bulk35299aa1": {}
+      }
+    }
+  }
+}

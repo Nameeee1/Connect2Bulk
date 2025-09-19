@@ -4,6 +4,8 @@ import { fetchUserAttributes, updateUserAttributes } from 'aws-amplify/auth';
 import { generateClient } from 'aws-amplify/data';
 import type { Schema } from '../../../../amplify/data/resource';
 import { useAlert } from '../../../components/AlertProvider';
+import { uploadData, getUrl } from 'aws-amplify/storage';
+import { v4 as uuidv4 } from 'uuid';
 
 // Country list restricted per request: American, Philippines, Indian, England, Australian
 const COUNTRY_OPTIONS = [
@@ -43,6 +45,8 @@ const Personal: React.FC = () => {
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [avatarError, setAvatarError] = useState<string>('');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -57,6 +61,8 @@ const Personal: React.FC = () => {
         const last = attrs.family_name || '';
         const email = attrs.email || '';
         const phone = attrs.phone_number || '';
+        const avatarUrl = attrs.picture || ''; // Get avatar URL from Cognito
+        
         // Derive country code and iso2 from phone if possible
         let countryCode = '+1';
         let countryIso2 = 'US';
@@ -87,7 +93,7 @@ const Personal: React.FC = () => {
           bio: '',
           newsletter: false,
           twoFactor: false,
-          avatarUrl: '',
+          avatarUrl, // Set the avatar URL from Cognito
           countryIso2,
           countryCode,
         };
@@ -266,14 +272,18 @@ const Personal: React.FC = () => {
     return `+${withCC}`;
   };
 
-  const onFileSelected = (file: File) => {
+  const onFileSelected = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setAvatarError('Please upload an image file (PNG or JPG).');
       return;
     }
+    
     setAvatarError('');
+    setAvatarFile(file);
+    
+    // Create a preview URL
     const url = URL.createObjectURL(file);
-    setForm((prev) => ({ ...prev, avatarUrl: url }));
+    setForm(prev => ({ ...prev, avatarUrl: url }));
   };
 
   const onAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,143 +315,178 @@ const Personal: React.FC = () => {
     if (file) onFileSelected(file);
   };
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
     const errs = validateAll();
     const hasErrors = Object.values(errs).some(Boolean);
     if (hasErrors) return;
-    (async () => {
-      setSaving(true);
-      try {
-        const updates: Record<string, string> = {
-          given_name: form.firstName?.trim() || '',
-          family_name: form.lastName?.trim() || '',
-        };
-        // Email: if provided, set; Cognito may send a verification to new email
-        if (form.email?.trim()) updates.email = form.email.trim();
-        // Phone: sanitize to E.164 (e.g., +1234567890)
-        const raw = (form.phone || '').trim();
-        if (raw) {
-          const e164 = sanitizeE164(raw);
-          if (e164) updates.phone_number = e164;
-        }
-        await updateUserAttributes({ userAttributes: updates });
-
-        // Also persist overlapping fields to Amplify Data (Firm)
+    
+    setIsUploading(true);
+    
+    try {
+      let avatarUrl = form.avatarUrl;
+      
+      // If there's a new avatar file, upload it to S3
+      if (avatarFile) {
+        const fileExtension = avatarFile.name.split('.').pop();
+        const key = `profile-pictures/${uuidv4()}.${fileExtension}`;
+        
         try {
-          const emailBefore = (snapshotRef.current?.email || '').trim();
-          const targetEmailRaw = emailBefore || (form.email?.trim() || '');
-          const targetEmail = targetEmailRaw.toLowerCase();
-          if (targetEmail) {
-            const { data: firms, errors } = await client.models.Firm.list({
-              filter: { administrator_email: { eq: targetEmail } },
-              limit: 1,
-            });
-            if (!errors?.length && firms && firms.length > 0) {
-              const firm = firms[0];
-              await client.models.Firm.update({
-                id: firm.id,
-                administrator_email: (form.email?.trim() || firm.administrator_email)?.toLowerCase(),
-                administrator_first_name: form.firstName?.trim() || firm.administrator_first_name,
-                administrator_last_name: form.lastName?.trim() || firm.administrator_last_name,
-              });
-              // Persist Firm ID for Work tab to fetch by ID (strong consistency)
-              try { localStorage.setItem('c2b:myFirmId', String(firm.id)); } catch {}
-            } else {
-              const id = `firm-not-found-${Date.now()}`;
-              const handleCreate = async () => {
-                try {
-                  setSaving(true);
-                  await client.models.Firm.create({
-                    firm_name: '',
-                    address: '',
-                    city: '',
-                    country: 'USA',
-                    administrator_email: (form.email?.trim() || targetEmail)?.toLowerCase(),
-                    administrator_first_name: form.firstName?.trim() || '',
-                    administrator_last_name: form.lastName?.trim() || '',
-                    state: '',
-                    zip: '',
-                    firm_type: 'Other',
-                    // Extended business fields with safe defaults
-                    dba: '',
-                    dot: '',
-                    mc: '',
-                    ein: '',
-                    phone: '',
-                    website: '',
-                    insurance_provider: '',
-                    policy_number: '',
-                    policy_expiry: '',
-                    w9_on_file: false,
-                    brand_color: '#0d6efd',
-                    notes: '',
-                    // Counters
-                    load_posts: 0,
-                    truck_posts: 0,
-                  });
-                  alertApi.success({
-                    title: 'Firm created',
-                    message: 'A new Firm record was created and linked to your profile.',
-                  });
-                  // Attempt to look up the created Firm and persist its ID
-                  try {
-                    const lookup = await client.models.Firm.list({
-                      filter: { administrator_email: { eq: (form.email?.trim() || targetEmail).toLowerCase() } },
-                      limit: 1,
-                    });
-                    const f = !lookup.errors?.length && lookup.data?.[0];
-                    if (f) localStorage.setItem('c2b:myFirmId', String(f.id));
-                  } catch {}
-                } catch (createErr) {
-                  console.error('Failed to create Firm:', createErr);
-                  alertApi.error({
-                    title: 'Failed to create Firm',
-                    message: (createErr as any)?.message ?? 'An unexpected error occurred.',
-                  });
-                } finally {
-                  setSaving(false);
-                  alertApi.close(id);
-                }
-              };
-              alertApi.info({
-                id,
-                title: 'Firm not found',
-                message:
-                  'We could not find a Firm record for your administrator email, so only your Auth profile was updated.',
-                action: (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Secondary type="button" onClick={() => alertApi.close(id)}>
-                      Dismiss
-                    </Secondary>
-                    <Primary type="button" onClick={handleCreate}>
-                      Create Firm
-                    </Primary>
-                  </div>
-                ),
-              });
-            }
-          }
-        } catch (firmErr) {
-          console.warn('Firm update skipped/failed:', firmErr);
+          await uploadData({
+            key,
+            data: avatarFile,
+            options: {
+              contentType: avatarFile.type,
+            },
+          }).result;
+          
+          // Get the public URL of the uploaded file
+          const { url } = await getUrl({ key });
+          avatarUrl = url.toString();
+        } catch (uploadError) {
+          console.error('Error uploading avatar:', uploadError);
+          alertApi.error({
+            title: 'Error uploading avatar',
+            message: 'Could not upload the profile picture. Please try again.'
+          });
+          return;
         }
-
-        alertApi.success({
-          title: 'Profile saved',
-          message: 'If you changed your email, please verify it via the link we sent.',
-        });
-        setEditing(false);
-      } catch (err) {
-        console.error('Failed to update profile attributes:', err);
-        alertApi.error({
-          title: 'Failed to save profile',
-          message: (err as any)?.message ?? 'An unexpected error occurred.',
-        });
-      } finally {
-        setSaving(false);
       }
-    })();
+      
+      // Update user attributes with the new avatar URL
+      const updates: Record<string, string> = {
+        given_name: form.firstName?.trim() || '',
+        family_name: form.lastName?.trim() || '',
+        picture: avatarUrl || ''
+      };
+      
+      // Email: if provided, set; Cognito may send a verification to new email
+      if (form.email?.trim()) updates.email = form.email.trim();
+      
+      // Phone: sanitize to E.164 (e.g., +1234567890)
+      const raw = (form.phone || '').trim();
+      if (raw) {
+        const e164 = sanitizeE164(raw);
+        if (e164) updates.phone_number = e164;
+      }
+      
+      await updateUserAttributes({ userAttributes: updates });
+
+      // Also persist overlapping fields to Amplify Data (Firm)
+      try {
+        const emailBefore = (snapshotRef.current?.email || '').trim();
+        const targetEmailRaw = emailBefore || (form.email?.trim() || '');
+        const targetEmail = targetEmailRaw.toLowerCase();
+        if (targetEmail) {
+          const { data: firms, errors } = await client.models.Firm.list({
+            filter: { administrator_email: { eq: targetEmail } },
+            limit: 1,
+          });
+          if (!errors?.length && firms && firms.length > 0) {
+            const firm = firms[0];
+            await client.models.Firm.update({
+              id: firm.id,
+              administrator_email: (form.email?.trim() || firm.administrator_email)?.toLowerCase(),
+              administrator_first_name: form.firstName?.trim() || firm.administrator_first_name,
+              administrator_last_name: form.lastName?.trim() || firm.administrator_last_name,
+            });
+            // Persist Firm ID for Work tab to fetch by ID (strong consistency)
+            try { localStorage.setItem('c2b:myFirmId', String(firm.id)); } catch {}
+          } else {
+            const id = `firm-not-found-${Date.now()}`;
+            const handleCreate = async () => {
+              try {
+                setSaving(true);
+                await client.models.Firm.create({
+                  firm_name: '',
+                  address: '',
+                  city: '',
+                  country: 'USA',
+                  administrator_email: (form.email?.trim() || targetEmail)?.toLowerCase(),
+                  administrator_first_name: form.firstName?.trim() || '',
+                  administrator_last_name: form.lastName?.trim() || '',
+                  state: '',
+                  zip: '',
+                  firm_type: 'Other',
+                  // Extended business fields with safe defaults
+                  dba: '',
+                  dot: '',
+                  mc: '',
+                  ein: '',
+                  phone: '',
+                  website: '',
+                  insurance_provider: '',
+                  policy_number: '',
+                  policy_expiry: '',
+                  w9_on_file: false,
+                  brand_color: '#0d6efd',
+                  notes: '',
+                  // Counters
+                  load_posts: 0,
+                  truck_posts: 0,
+                });
+                alertApi.success({
+                  title: 'Firm created',
+                  message: 'A new Firm record was created and linked to your profile.',
+                });
+                // Attempt to look up the created Firm and persist its ID
+                try {
+                  const lookup = await client.models.Firm.list({
+                    filter: { administrator_email: { eq: (form.email?.trim() || targetEmail).toLowerCase() } },
+                    limit: 1,
+                  });
+                  const f = !lookup.errors?.length && lookup.data?.[0];
+                  if (f) localStorage.setItem('c2b:myFirmId', String(f.id));
+                } catch {}
+              } catch (createErr) {
+                console.error('Failed to create Firm:', createErr);
+                alertApi.error({
+                  title: 'Failed to create Firm',
+                  message: (createErr as any)?.message ?? 'An unexpected error occurred.',
+                });
+              } finally {
+                setSaving(false);
+                alertApi.close(id);
+              }
+            };
+            alertApi.info({
+              id,
+              title: 'Firm not found',
+              message:
+                'We could not find a Firm record for your administrator email, so only your Auth profile was updated.',
+              action: (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Secondary type="button" onClick={() => alertApi.close(id)}>
+                    Dismiss
+                  </Secondary>
+                  <Primary type="button" onClick={handleCreate}>
+                    Create Firm
+                  </Primary>
+                </div>
+              ),
+            });
+          }
+        }
+      } catch (firmErr) {
+        console.warn('Firm update skipped/failed:', firmErr);
+      }
+
+      alertApi.success({
+        title: 'Profile saved',
+        message: 'If you changed your email, please verify it via the link we sent.',
+      });
+      setEditing(false);
+    } catch (err) {
+      console.error('Failed to update profile attributes:', err);
+      alertApi.error({
+        title: 'Failed to save profile',
+        message: (err as any)?.message ?? 'An unexpected error occurred.',
+      });
+    } finally {
+      setIsUploading(false);
+      setSaving(false);
+    }
   };
 
   const beginEdit = () => {
@@ -772,8 +817,8 @@ const Personal: React.FC = () => {
           <Secondary type="button" onClick={onCancel}>
             Cancel
           </Secondary>
-          <Primary type="submit" disabled={!canSave || saving} aria-disabled={!canSave || saving}>
-            {saving ? 'Saving...' : 'Save'}
+          <Primary type="submit" disabled={!canSave || saving || isUploading} aria-disabled={!canSave || saving || isUploading}>
+            {saving || isUploading ? 'Saving...' : 'Save'}
           </Primary>
         </Actions>
       )}
@@ -904,22 +949,18 @@ const sharedInput = `
   color: #2a2f45;
   font: inherit;
   outline: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
-
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
   &:focus-visible {
     border-color: #0d6efd;
     box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
   }
-
   &::placeholder {
     color: #94a3b8;
   }
-
   &[aria-invalid='true'] {
     border-color: #dc3545;
     box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.12);
   }
-
   &:disabled,
   &[aria-disabled='true'] {
     background: #f1f5f9;

@@ -1,0 +1,14 @@
+{
+  "resourceName": "s301ccef3f",
+  "policyUUID": "01ccef3f",
+  "bucketName": "connect2bulk936a53d549d549da8694381eea749763",
+  "storageAccess": "auth",
+  "guestAccess": [],
+  "authAccess": [
+    "CREATE_AND_UPDATE",
+    "READ",
+    "DELETE"
+  ],
+  "triggerFunction": "NONE",
+  "groupAccess": {}
+}
